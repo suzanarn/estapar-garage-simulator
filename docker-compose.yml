@@ -1,0 +1,22 @@
+version: "3.9"
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: estapar-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: estapar
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  garage-simulator:
+    image: cfontes0estapar/garage-sim:1.0.0
+    container_name: estapar-simulator
+    network_mode: host
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
