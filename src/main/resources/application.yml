@@ -21,3 +21,7 @@ spring:
 
 simulator:
   base-url: http://localhost:3000
+
+app:
+  bootstrap:
+    enabled: true
