@@ -8,11 +8,11 @@ public class GarageDtos {
 
     public record SectorDto(
             String sector,
-            BigDecimal base_price,
-            Integer max_capacity,
-            String open_hour,
-            String close_hour,
-            Integer duration_limit_minutes
+            BigDecimal basePrice,
+            Integer maxCapacity,
+            String openHour,
+            String closeHour,
+            Integer durationLimitMinutes
     ) {}
 
     public record SpotDto(

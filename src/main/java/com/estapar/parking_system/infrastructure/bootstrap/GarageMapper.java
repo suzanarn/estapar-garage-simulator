@@ -12,11 +12,11 @@ public class GarageMapper {
 
     public void applyToEntity(SectorDto src, SectorEntity dst) {
         dst.setCode(src.sector());
-        dst.setBasePrice(src.base_price());
-        dst.setMaxCapacity(src.max_capacity());
-        dst.setOpenHour(src.open_hour());
-        dst.setCloseHour(src.close_hour());
-        dst.setDurationLimitMinutes(src.duration_limit_minutes());
+        dst.setBasePrice(src.basePrice());
+        dst.setMaxCapacity(src.maxCapacity());
+        dst.setOpenHour(src.openHour());
+        dst.setCloseHour(src.closeHour());
+        dst.setDurationLimitMinutes(src.durationLimitMinutes());
     }
 
     public void applyToEntity(SpotDto src, SpotEntity dst) {

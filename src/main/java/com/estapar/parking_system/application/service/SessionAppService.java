@@ -39,16 +39,16 @@ public class SessionAppService {
 
     @Transactional
     public void handleEntry(EntryEvent event) {
-         log.info("ENTRY handled for {}", event.license_plate());
-        if (sessionRepo.findOpenByPlate(event.license_plate()).isPresent()) return;
+         log.info("ENTRY handled for {}", event.licensePlate());
+        if (sessionRepo.findOpenByPlate(event.licensePlate()).isPresent()) return;
 
         if (occupancyService.isGarageFullBySessions()) {
             throw new GarageFullException("Garage is full");
         }
 
         sessionRepo.save(new VehicleSessionEntity().builder()
-                .licensePlate(event.license_plate())
-                .entryTime(parseInstantSafe(event.entry_time()))
+                .licensePlate(event.licensePlate())
+                .entryTime(parseInstantSafe(event.entryTime()))
                 .priceFactor(dynamicFactorService.compute(occupancyService.globalRatioBySessions()))
                 .build());
 
@@ -58,8 +58,8 @@ public class SessionAppService {
     @Transactional
     public void handleParked(ParkedEvent ev) {
 
-        var session = sessionRepo.findOpenByPlate(ev.license_plate()).orElse(null);
-        if (session == null) { log.debug("PARKED ignored: no open session for {}", ev.license_plate()); return; }
+        var session = sessionRepo.findOpenByPlate(ev.licensePlate()).orElse(null);
+        if (session == null) { log.debug("PARKED ignored: no open session for {}", ev.licensePlate()); return; }
 
         var spot = spotRepository.findByLatAndLng(ev.lat(), ev.lng()).orElse(null);
         if (spot == null) return;
@@ -68,7 +68,7 @@ public class SessionAppService {
 
         long openInSector = sessionRepo.countOpenBySectorId(sector.getId());
         if (openInSector >= sector.getMaxCapacity()) {
-             log.debug("PARKED ignored: no open session for {}", ev.license_plate());
+             log.debug("PARKED ignored: no open session for {}", ev.licensePlate());
             return;
         }
 
@@ -86,17 +86,17 @@ public class SessionAppService {
 
         session.setSpot(spot);
         sessionRepo.save(session);
-        log.info("PARKED handled for {} - {}", ev.license_plate(), spot );
+        log.info("PARKED handled for {} - {}", ev.licensePlate(), spot );
 
     }
 
 
     @Transactional
     public void handleExit(ExitEvent ev) {
-        var session = sessionRepo.findOpenByPlate(ev.license_plate()).orElse(null);
+        var session = sessionRepo.findOpenByPlate(ev.licensePlate()).orElse(null);
         if (session == null) return;
 
-        Instant exit = parseInstantSafe(ev.exit_time());
+        Instant exit = parseInstantSafe(ev.exitTime());
         session.setExitTime(exit);
 
         if (session.getSector() != null) {

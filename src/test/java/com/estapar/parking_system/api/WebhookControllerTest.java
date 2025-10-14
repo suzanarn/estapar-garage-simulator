@@ -54,9 +54,9 @@ class WebhookControllerTest {
         verify(service, times(1)).handleEntry(captor.capture());
 
         WebhookDtos.EntryEvent dto = captor.getValue();
-        assertThat(dto.license_plate()).isEqualTo("ZUL0001");
-        assertThat(dto.entry_time()).isEqualTo("2025-01-01T12:00:00Z");
-        assertThat(dto.event_type()).isEqualTo(WebhookDtos.EventType.ENTRY);
+        assertThat(dto.licensePlate()).isEqualTo("ZUL0001");
+        assertThat(dto.entryTime()).isEqualTo("2025-01-01T12:00:00Z");
+        assertThat(dto.eventType()).isEqualTo(WebhookDtos.EventType.ENTRY);
     }
 
     @Test
@@ -80,10 +80,10 @@ class WebhookControllerTest {
         verify(service, times(1)).handleParked(captor.capture());
 
         WebhookDtos.ParkedEvent dto = captor.getValue();
-        assertThat(dto.license_plate()).isEqualTo("ZUL0001");
+        assertThat(dto.licensePlate()).isEqualTo("ZUL0001");
         assertThat(dto.lat()).isEqualByComparingTo(new BigDecimal("-23.561684"));
         assertThat(dto.lng()).isEqualByComparingTo(new BigDecimal("-46.655981"));
-        assertThat(dto.event_type()).isEqualTo(WebhookDtos.EventType.PARKED);
+        assertThat(dto.eventType()).isEqualTo(WebhookDtos.EventType.PARKED);
     }
 
     @Test
@@ -106,9 +106,9 @@ class WebhookControllerTest {
         verify(service, times(1)).handleExit(captor.capture());
 
         WebhookDtos.ExitEvent dto = captor.getValue();
-        assertThat(dto.license_plate()).isEqualTo("ZUL0001");
-        assertThat(dto.exit_time()).isEqualTo("2025-01-01T12:40:00Z");
-        assertThat(dto.event_type()).isEqualTo(WebhookDtos.EventType.EXIT);
+        assertThat(dto.licensePlate()).isEqualTo("ZUL0001");
+        assertThat(dto.exitTime()).isEqualTo("2025-01-01T12:40:00Z");
+        assertThat(dto.eventType()).isEqualTo(WebhookDtos.EventType.EXIT);
     }
 
     @Test
