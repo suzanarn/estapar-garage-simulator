@@ -14,9 +14,8 @@ public class PricingService {
 
         if(minutes <= 30) return BigDecimal.ZERO;
 
-        long hours = (long) Math.ceil(minutes/60.0);
-
-        return basePrice.multiply(factor).multiply(BigDecimal.valueOf(hours)).setScale(2, RoundingMode.HALF_UP);
-
+        return basePrice.multiply(factor)
+                .multiply(BigDecimal.valueOf((long) Math.ceil(minutes/60.0)))
+                .setScale(2, RoundingMode.HALF_UP);
     }
 }

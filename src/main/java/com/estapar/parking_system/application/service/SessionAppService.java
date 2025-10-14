@@ -1,8 +1,9 @@
 package com.estapar.parking_system.application.service;
 
-import com.estapar.parking_system.api.dto.WebhookDtos.ExitEvent;
 import com.estapar.parking_system.api.dto.WebhookDtos.EntryEvent;
 import com.estapar.parking_system.api.dto.WebhookDtos.ParkedEvent;
+import com.estapar.parking_system.api.dto.WebhookDtos.ExitEvent;
+
 import com.estapar.parking_system.domain.entity.SectorEntity;
 import com.estapar.parking_system.domain.entity.VehicleSessionEntity;
 import com.estapar.parking_system.domain.exceptions.GarageFullException;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -44,14 +46,12 @@ public class SessionAppService {
             throw new GarageFullException("Garage is full");
         }
 
-        var ratio = occupancyService.globalRatioBySessions();
-        var priceFactor = dynamicFactorService.compute(ratio);
+        sessionRepo.save(new VehicleSessionEntity().builder()
+                .licensePlate(event.license_plate())
+                .entryTime(parseInstantSafe(event.entry_time()))
+                .priceFactor(dynamicFactorService.compute(occupancyService.globalRatioBySessions()))
+                .build());
 
-        var s = new VehicleSessionEntity();
-        s.setLicensePlate(event.license_plate());
-        s.setEntryTime(parseInstantSafe(event.entry_time()));
-        s.setPriceFactor(priceFactor);
-        sessionRepo.save(s);
     }
 
 
@@ -79,13 +79,11 @@ public class SessionAppService {
             session.setBasePrice(sector.getBasePrice());
         }
 
-        // Ocupa a vaga se estiver livre
         if (spot.getOccupiedBySessionId() == null) {
             spot.setOccupiedBySessionId(session.getId());
             spotRepository.save(spot);
         }
 
-        // Vincula a sessão ao spot (mesmo se a vaga já estivesse marcada por alguma condição idempotente)
         session.setSpot(spot);
         sessionRepo.save(session);
         log.info("PARKED handled for {} - {}", ev.license_plate(), spot );
@@ -95,17 +93,24 @@ public class SessionAppService {
 
     @Transactional
     public void handleExit(ExitEvent ev) {
-        log.info("EXIT handled for {} - {}", ev.license_plate(), ev.exit_time() );
-
         var session = sessionRepo.findOpenByPlate(ev.license_plate()).orElse(null);
-        if (session == null) return; // nada a fazer
+        if (session == null) return;
 
         Instant exit = parseInstantSafe(ev.exit_time());
         session.setExitTime(exit);
 
-        // Fallback: se nunca PARKED, não temos basePrice/sector.
+        if (session.getSector() != null) {
+            long stayed = Duration.between(session.getEntryTime(), exit).toMinutes();
+            Integer limit = session.getSector().getDurationLimitMinutes();
+            if (limit != null && stayed > limit) {
+                log.warn("Duration limit exceeded: plate={}, sector={}, stayed={}min, limit={}min",
+                        session.getLicensePlate(),
+                        session.getSector().getCode(),
+                        stayed, limit);
+            }
+        }
+
         if (session.getBasePrice() == null) {
-            // escolha coerente e simples: menor basePrice da garagem
             var minBase = sectorRepository.findMinBasePrice();
             session.setBasePrice(minBase != null ? minBase : BigDecimal.ZERO);
         }
@@ -119,30 +124,27 @@ public class SessionAppService {
         session.setChargedAmount(amount);
         sessionRepo.save(session);
 
-        // Libera a vaga física (se estava ocupada)
         var spot = session.getSpot();
         if (spot != null && session.getId().equals(spot.getOccupiedBySessionId())) {
             spot.setOccupiedBySessionId(null);
             spotRepository.save(spot);
+            session.setSpot(null);
+            sessionRepo.save(session);
         }
     }
-
-
-
-
     private Instant parseInstantSafe(String iso) {
         if (iso == null || iso.isBlank()) {
             throw new IllegalArgumentException("Missing timestamp");
         }
         try {
             return Instant.parse(iso);
-        } catch (DateTimeParseException ignore) { /* segue abaixo */ }
+        } catch (DateTimeParseException ignore) { }
 
         boolean hasOffset = iso.matches(".*[+-]\\d{2}:?\\d{2}$");
         if (!iso.endsWith("Z") && !hasOffset) {
             try {
                 return Instant.parse(iso + "Z");
-            } catch (DateTimeParseException ignore) { /* segue abaixo */ }
+            } catch (DateTimeParseException ignore) { }
         }
 
         try {
