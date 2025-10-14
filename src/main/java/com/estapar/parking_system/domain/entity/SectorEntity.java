@@ -20,7 +20,7 @@ public class SectorEntity {
     @Column(name = "code", unique = true, nullable = false)
     private String code;
 
-    @Column(name= "base_price", nullable = false)
+    @Column(name= "base_price", nullable = true)
     private BigDecimal basePrice;
 
     @Column(name = "max_capacity", nullable = false)

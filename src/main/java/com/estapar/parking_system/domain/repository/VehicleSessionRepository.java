@@ -13,13 +13,6 @@ public interface VehicleSessionRepository extends JpaRepository<VehicleSessionEn
             "where vs.licensePlate = :plate and vs.exitTime is null")
     Optional<VehicleSessionEntity> findOpenByPlate(String plate);
 
-    @Query("select count(vs) from VehicleSessionEntity vs " +
-            "where vs.sector.id = :sectorId and vs.exitTime is null")
-    long countOpenBySectorId(Long sectorId);
-
-    @Query("select count(vs) from VehicleSessionEntity vs where vs.exitTime is null")
-    long countOpenSessions();
-
     @Query("""
        select coalesce(sum(vs.chargedAmount), 0)
        from VehicleSessionEntity vs
@@ -27,6 +20,5 @@ public interface VehicleSessionRepository extends JpaRepository<VehicleSessionEn
          and (:sectorCode is null or vs.sector.code = :sectorCode)
        """)
     BigDecimal sumChargedBetweenAndSector(Instant start, Instant end, String sectorCode);
-
 
 }

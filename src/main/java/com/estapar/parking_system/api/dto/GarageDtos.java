@@ -1,5 +1,7 @@
 package com.estapar.parking_system.api.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -7,19 +9,19 @@ public class GarageDtos {
     public record GarageResponse(List<SectorDto> garage, List<SpotDto> spots) {}
 
     public record SectorDto(
-            String sector,
-            BigDecimal basePrice,
-            Integer maxCapacity,
-            String openHour,
-            String closeHour,
-            Integer durationLimitMinutes
+            @JsonProperty("sector") String sector,
+            @JsonProperty("basePrice") BigDecimal basePrice,
+            @JsonProperty("max_capacity") Integer maxCapacity,
+            @JsonProperty("open_hour") String openHour,
+            @JsonProperty("close_hour") String closeHour,
+            @JsonProperty("duration_limit_minutes") Integer durationLimitMinutes
     ) {}
 
     public record SpotDto(
-            Long id,
-            String sector,
-            BigDecimal lat,
-            BigDecimal lng,
-            Boolean occupied
+            @JsonProperty("id") Long id,
+            @JsonProperty("sector") String sector,
+            @JsonProperty("lat") BigDecimal lat,
+            @JsonProperty("lng") BigDecimal lng,
+            @JsonProperty("occupied") Boolean occupied
     ) {}
 }

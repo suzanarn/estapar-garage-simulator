@@ -1,41 +1,42 @@
 package com.estapar.parking_system.domain.service;
 
+import com.estapar.parking_system.domain.entity.SectorEntity;
+import com.estapar.parking_system.domain.repository.SectorRepository;
 import com.estapar.parking_system.domain.repository.SpotRepository;
-import com.estapar.parking_system.domain.repository.VehicleSessionRepository;
+import lombok.AllArgsConstructor;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
+@AllArgsConstructor
 public class OccupancyService {
-    private final SpotRepository spotRepository;
-    private final VehicleSessionRepository sessionRepository;
+        private final SpotRepository spotRepository;
+        private final SectorRepository sectorRepository;
 
-    public OccupancyService(SpotRepository spotRepository,
-                            VehicleSessionRepository sessionRepository) {
-        this.spotRepository = spotRepository;
-        this.sessionRepository = sessionRepository;
-    }
 
-    /** Capacidade total da garagem (total de vagas físicas) */
-    public long totalCapacity() {
-        return spotRepository.count();
-    }
+        /** Capacidade total (todas as vagas físicas) */
+        public long totalCapacity() {
+            return spotRepository.count();
+        }
 
-    /** Quantas “unidades de capacidade” já estão consumidas por sessões abertas */
-    public long openSessions() {
-        return sessionRepository.countOpenSessions();
-    }
+        /** Vagas já tomadas (ocupadas/reservadas) — usamos occupied como “reserva lógica” */
+        public long takenSpotsGlobal() {
+            return spotRepository.countOccupiedGlobal();
+        }
 
-    /** Ratio global baseado em sessões (reserva no ENTRY) */
-    public BigDecimal globalRatioBySessions() {
-        long total = totalCapacity();
-        if (total == 0) return BigDecimal.ZERO;
-        long open = openSessions();
-        return BigDecimal.valueOf(open)
-                .divide(BigDecimal.valueOf(total), 2, RoundingMode.HALF_UP);
-    }
+        /** Ratio global por VAGAS, para preço dinâmico na ENTRADA */
+        public BigDecimal globalRatioBySpots() {
+            long total = totalCapacity();
+            if (total == 0) return BigDecimal.ZERO;
+            return BigDecimal.valueOf(takenSpotsGlobal())
+                    .divide(BigDecimal.valueOf(total), 2, RoundingMode.HALF_UP);
+        }
 
-    /** true se a garagem está cheia (por sessões abertas) */
-    public boolean isGarageFullBySessions() {
-        return openSessions() >= totalCapacity();
-    }
+        /** Setor cheio quando vagas tomadas no setor >= maxCapacity do setor */
+        public boolean isSectorFull(Long sectorId) {
+            long taken = spotRepository.countOccupiedInSector(sectorId);
+            int max = sectorRepository.findById(sectorId)
+                    .map(SectorEntity::getMaxCapacity).orElse(0);
+            return taken >= max;
+        }
 }

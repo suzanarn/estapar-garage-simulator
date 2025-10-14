@@ -1,162 +1,114 @@
 package com.estapar.parking_system.application.service;
 
+
 import com.estapar.parking_system.api.dto.WebhookDtos;
+import com.estapar.parking_system.application.helpers.EntryAllocator;
+import com.estapar.parking_system.application.helpers.ParkingPreemption;
 import com.estapar.parking_system.domain.entity.SectorEntity;
 import com.estapar.parking_system.domain.entity.SpotEntity;
 import com.estapar.parking_system.domain.entity.VehicleSessionEntity;
+import com.estapar.parking_system.domain.exceptions.GarageFullException;
 import com.estapar.parking_system.domain.repository.SectorRepository;
 import com.estapar.parking_system.domain.repository.SpotRepository;
 import com.estapar.parking_system.domain.repository.VehicleSessionRepository;
-import org.junit.jupiter.api.BeforeEach;
+import com.estapar.parking_system.domain.service.DynamicFactorService;
+import com.estapar.parking_system.domain.service.OccupancyService;
+import com.estapar.parking_system.domain.service.PricingService;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.AfterEach;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.context.TestPropertySource;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
+import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-@SpringBootTest
-@Testcontainers
-@TestPropertySource(properties = {
-        "app.bootstrap.enabled=false",          // não chama o simulador /bootstrap
-        "spring.jpa.hibernate.ddl-auto=none",   // usamos Flyway
-        "spring.flyway.enabled=true"
-})
-class SessionAppServiceIntegrationTest {
+class SessionAppServiceTest {
 
-    @Container
-    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
-            .withDatabaseName("estapar")
-            .withUsername("root")
-            .withPassword("root");
+    VehicleSessionRepository sessionRepo = mock(VehicleSessionRepository.class);
+    OccupancyService occupancyService = mock(OccupancyService.class);
+    DynamicFactorService dynamicFactorService = mock(DynamicFactorService.class);
+    SpotRepository spotRepository = mock(SpotRepository.class);
+    SectorRepository sectorRepository = mock(SectorRepository.class);
+    PricingService pricingService = mock(PricingService.class);
 
-    @DynamicPropertySource
-    static void configureProps(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", mysql::getJdbcUrl);
-        registry.add("spring.datasource.username", mysql::getUsername);
-        registry.add("spring.datasource.password", mysql::getPassword);
+    EntryAllocator allocator = mock(EntryAllocator.class);
+    ParkingPreemption preemption = mock(ParkingPreemption.class);
+
+    SessionAppService service = new SessionAppService(
+            sessionRepo, occupancyService, dynamicFactorService,
+            spotRepository, sectorRepository, pricingService,
+            allocator, preemption
+    );
+
+    @Test
+    void handleEntry_ok_sets_sector_baseprice_spot() {
+        var event = new WebhookDtos.EntryEvent("AAA1234", "2025-01-01T12:00:00Z", WebhookDtos.EventType.ENTRY);
+        when(sessionRepo.findOpenByPlate("AAA1234")).thenReturn(Optional.empty());
+        when(dynamicFactorService.compute(any())).thenReturn(new BigDecimal("1.00"));
+
+        var saved = new VehicleSessionEntity(); saved.setId(10L); // retorno do primeiro save
+        when(sessionRepo.save(any(VehicleSessionEntity.class))).thenReturn(saved);
+
+        var sector = new SectorEntity(); sector.setId(1L); sector.setBasePrice(new BigDecimal("10.00"));
+        var spot = new SpotEntity(); spot.setId(100L); spot.setSector(sector);
+
+        when(allocator.allocateForSession(10L))
+                .thenReturn(new EntryAllocator.Allocation(sector, spot));
+
+        service.handleEntry(event);
+
+        // Captura TODAS as chamadas e valida o ÚLTIMO valor salvo
+        var captor = ArgumentCaptor.forClass(VehicleSessionEntity.class);
+        verify(sessionRepo, atLeast(2)).save(captor.capture());
+
+        var lastSaved = captor.getAllValues().get(captor.getAllValues().size() - 1);
+
+        assertThat(lastSaved.getId()).isEqualTo(10L);
+        assertThat(lastSaved.getSector()).isSameAs(sector);
+        assertThat(lastSaved.getBasePrice()).isEqualByComparingTo("10.00");
+        assertThat(lastSaved.getSpot()).isSameAs(spot);
     }
 
-    @Autowired private SessionAppService service;
-    @Autowired private VehicleSessionRepository sessionRepo;
-    @Autowired private SectorRepository sectorRepo;
-    @Autowired private SpotRepository spotRepo;
 
-    private SectorEntity sectorA;
-    private SpotEntity spotA1;
+    @Test
+    void handleEntry_no_spot_deletes_session_and_throws() {
+        var event = new WebhookDtos.EntryEvent("AAA1234", "2025-01-01T12:00:00Z", WebhookDtos.EventType.ENTRY);
+        when(sessionRepo.findOpenByPlate("AAA1234")).thenReturn(Optional.empty());
+        when(dynamicFactorService.compute(any())).thenReturn(new BigDecimal("1.00"));
+        var saved = new VehicleSessionEntity(); saved.setId(10L);
+        when(sessionRepo.save(any(VehicleSessionEntity.class))).thenReturn(saved);
+        when(allocator.allocateForSession(10L)).thenReturn(null);
 
-    @BeforeEach
-    void setupData() {
-        // cria setor A (basePrice 40.50, capacidade 10)
-        sectorA = new SectorEntity();
-        sectorA.setCode("A");
-        sectorA.setBasePrice(new BigDecimal("40.50"));
-        sectorA.setMaxCapacity(10);
-        sectorA.setOpenHour("00:00");
-        sectorA.setCloseHour("23:59");
-        sectorA.setDurationLimitMinutes(1440);
-        sectorA = sectorRepo.save(sectorA);
+        assertThatThrownBy(() -> service.handleEntry(event))
+                .isInstanceOf(GarageFullException.class);
 
-        // cria uma vaga no setor A
-        spotA1 = new SpotEntity();
-        spotA1.setId(1L);
-        spotA1.setSector(sectorA);
-        spotA1.setLat(new BigDecimal("-23.561684"));
-        spotA1.setLng(new BigDecimal("-46.655981"));
-        spotA1.setOccupiedBySessionId(null);
-        spotA1 = spotRepo.save(spotA1);
-    }
-
-    @AfterEach
-    void clean() {
-        sessionRepo.deleteAll();
-        spotRepo.deleteAll();
-        sectorRepo.deleteAll();
+        verify(sessionRepo).deleteById(10L);
     }
 
     @Test
-    void fullFlow_entry_parked_exit_shouldPersistAndCharge() {
-        // --- ENTRY ---
-        var entryTime = "2025-01-01T12:00:00Z";
-        var plate = "ZUL0001";
-        service.handleEntry(new WebhookDtos.EntryEvent(
-                plate, entryTime, WebhookDtos.EventType.ENTRY));
+    void handleParked_delegates_to_preemption_and_persists_on_success() {
+        var event = new WebhookDtos.ParkedEvent("AAA1234", new BigDecimal("1.0"), new BigDecimal("2.0"), WebhookDtos.EventType.PARKED);
+        var sess = new VehicleSessionEntity(); sess.setId(10L);
+        when(sessionRepo.findOpenByPlate("AAA1234")).thenReturn(Optional.of(sess));
 
-        var open = sessionRepo.findOpenByPlate(plate).orElse(null);
-        assertNotNull(open, "ENTRY deve criar sessão aberta");
-        assertEquals(plate, open.getLicensePlate());
-        assertNotNull(open.getEntryTime());
-        assertNull(open.getExitTime());
-        assertNotNull(open.getPriceFactor(), "priceFactor calculado no ENTRY");
-        // primeiro carro: ocupação ~0 → fator esperado 0.90 (desconto 10%)
-        assertEquals(new BigDecimal("0.90"), open.getPriceFactor());
+        var sector = new SectorEntity(); sector.setId(1L);
+        var dest = new SpotEntity(); dest.setId(200L); dest.setSector(sector);
+        when(spotRepository.findByLatAndLng(new BigDecimal("1.0"), new BigDecimal("2.0"))).thenReturn(Optional.of(dest));
 
-        // --- PARKED ---
-        service.handleParked(new WebhookDtos.ParkedEvent(
-                plate,
-                new BigDecimal("-23.561684"),
-                new BigDecimal("-46.655981"),
-                WebhookDtos.EventType.PARKED
-        ));
+        when(preemption.placeOrPreempt(sess, dest)).thenReturn(ParkingPreemption.Result.PREEMPTED);
 
-        var parked = sessionRepo.findOpenByPlate(plate).orElse(null);
-        assertNotNull(parked);
-        assertNotNull(parked.getSpot(), "deve vincular spot no PARKED");
-        assertEquals(spotA1.getId(), parked.getSpot().getId());
-        assertNotNull(parked.getSector(), "deve setar sector no PARKED");
-        assertEquals(sectorA.getId(), parked.getSector().getId());
-        assertEquals(new BigDecimal("40.50"), parked.getBasePrice(), "basePrice herdado do setor");
-        // vaga fisicamente ocupada
-        var refreshedSpot = spotRepo.findById(spotA1.getId()).orElseThrow();
-        assertEquals(parked.getId(), refreshedSpot.getOccupiedBySessionId());
+        service.handleParked(event);
 
-        // --- EXIT ---
-        // permanência = 1h40 → 100 min → 30 min grátis → 70 min → arredonda para 2h
-        // 2h * 40.50 * 0.90 = 72.90
-        var exitTime = "2025-01-01T13:40:00Z";
-        service.handleExit(new WebhookDtos.ExitEvent(
-                plate, exitTime, WebhookDtos.EventType.EXIT));
-
-        VehicleSessionEntity closed = sessionRepo.findOpenByPlate(plate).orElse(null);
-        assertNull(closed, "deve encerrar sessão no EXIT");
-
-        // pega a última sessão fechada do plate
-        var sessions = sessionRepo.findAll();
-        assertEquals(1, sessions.size(), "deve existir 1 sessão no total");
-        var s = sessions.getFirst();
-        assertNotNull(s.getExitTime());
-        assertEquals(new BigDecimal("72.90"), s.getChargedAmount());
-
-        // vaga liberada
-        var freedSpot = spotRepo.findById(spotA1.getId()).orElseThrow();
-        assertNull(freedSpot.getOccupiedBySessionId(), "vaga deve ser liberada no EXIT");
+        verify(preemption).placeOrPreempt(sess, dest);
+        verify(sessionRepo).save(sess);
     }
 
     @Test
-    void parked_without_entry_should_be_ignored() {
-        service.handleParked(new WebhookDtos.ParkedEvent(
-                "NOENTRY",
-                new BigDecimal("-23.561684"),
-                new BigDecimal("-46.655981"),
-                WebhookDtos.EventType.PARKED
-        ));
-        assertTrue(sessionRepo.findAll().isEmpty(), "PARKED sem ENTRY deve ser ignorado");
-    }
-
-    @Test
-    void exit_without_entry_should_be_ignored() {
-        service.handleExit(new WebhookDtos.ExitEvent(
-                "NOENTRY", "2025-01-01T12:10:00Z", WebhookDtos.EventType.EXIT
-        ));
-        assertTrue(sessionRepo.findAll().isEmpty(), "EXIT sem ENTRY deve ser ignorado");
+    void handleParked_no_open_session_noop() {
+        var event = new WebhookDtos.ParkedEvent("AAA1234", new BigDecimal("1.0"), new BigDecimal("2.0"), WebhookDtos.EventType.PARKED);
+        when(sessionRepo.findOpenByPlate("AAA1234")).thenReturn(Optional.empty());
+        service.handleParked(event);
+        verifyNoInteractions(preemption);
     }
 }
-

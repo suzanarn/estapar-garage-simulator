@@ -10,7 +10,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.net.BindException;
+import org.springframework.validation.BindException;
 
 @RestControllerAdvice
 class WebhookExceptionHandler {
@@ -25,7 +25,7 @@ class WebhookExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<Void> onBadPayload(IllegalArgumentException ex) {
         log.warn("Webhook payload invalid: {}", ex.getMessage());
-        return ResponseEntity.badRequest().build();
+        return ResponseEntity.ok().build();
     }
     @ExceptionHandler(HttpMessageNotReadableException.class)
     ResponseEntity<Void> onNotReadable(HttpMessageNotReadableException ex) {

@@ -1,6 +1,6 @@
 package com.estapar.parking_system.config;
 
-import com.estapar.parking_system.domain.repository.VehicleSessionRepository;
+import com.estapar.parking_system.domain.repository.SectorRepository;
 import com.estapar.parking_system.domain.service.OccupancyService;
 import com.estapar.parking_system.domain.repository.SpotRepository;
 import com.estapar.parking_system.domain.service.DynamicFactorService;
@@ -16,9 +16,10 @@ public class DomainBeansConfig {
 
     @Bean
     public OccupancyService occupancyService(SpotRepository spotRepo,
-                                             VehicleSessionRepository sessionRepo) {
-        return new OccupancyService(spotRepo, sessionRepo);
+                                             SectorRepository sectorRepo) {
+        return new OccupancyService(spotRepo, sectorRepo);
     }
+
     @Bean
     public DynamicFactorService dynamicFactorService() {
         return new DynamicFactorService();
