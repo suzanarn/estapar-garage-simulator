@@ -25,7 +25,7 @@ class WebhookExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<Void> onBadPayload(IllegalArgumentException ex) {
         log.warn("Webhook payload invalid: {}", ex.getMessage());
-        return ResponseEntity.ok().build();
+        return ResponseEntity.badRequest().build();
     }
     @ExceptionHandler(HttpMessageNotReadableException.class)
     ResponseEntity<Void> onNotReadable(HttpMessageNotReadableException ex) {
