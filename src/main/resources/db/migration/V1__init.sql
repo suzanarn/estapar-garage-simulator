@@ -3,6 +3,8 @@
 -- =========================
 -- Tabela: sector
 -- =========================
+CREATE DATABASE IF NOT EXISTS estapar;
+
 CREATE TABLE sector (
   id BIGINT NOT NULL AUTO_INCREMENT,
   code VARCHAR(16) NOT NULL,                         -- "A", "B"
