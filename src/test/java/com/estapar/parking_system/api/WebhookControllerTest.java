@@ -2,8 +2,8 @@ package com.estapar.parking_system.api;
 
 
 import com.estapar.parking_system.api.controller.WebhookController;
+import com.estapar.parking_system.api.controller.registry.WebhookDispatcher;
 import com.estapar.parking_system.api.dto.WebhookDtos;
-import com.estapar.parking_system.application.service.SessionAppService;
 import com.estapar.parking_system.domain.exceptions.GarageFullException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,7 +32,7 @@ class WebhookControllerTest {
 
     @SuppressWarnings("deprecation")
     @MockBean
-    SessionAppService service;
+    WebhookDispatcher webhookDispatcher;
 
     @Test
     @DisplayName("ENTRY → deve retornar 200 e chamar handleEntry com DTO correto")
@@ -51,7 +51,7 @@ class WebhookControllerTest {
                 .andExpect(status().isOk());
 
         ArgumentCaptor<WebhookDtos.EntryEvent> captor = ArgumentCaptor.forClass(WebhookDtos.EntryEvent.class);
-        verify(service, times(1)).handleEntry(captor.capture());
+        verify(webhookDispatcher, times(1)).dispatch(captor.capture());
 
         WebhookDtos.EntryEvent dto = captor.getValue();
         assertThat(dto.licensePlate()).isEqualTo("ZUL0001");
@@ -77,7 +77,7 @@ class WebhookControllerTest {
                 .andExpect(status().isOk());
 
         ArgumentCaptor<WebhookDtos.ParkedEvent> captor = ArgumentCaptor.forClass(WebhookDtos.ParkedEvent.class);
-        verify(service, times(1)).handleParked(captor.capture());
+        verify(webhookDispatcher, times(1)).dispatch(captor.capture());
 
         WebhookDtos.ParkedEvent dto = captor.getValue();
         assertThat(dto.licensePlate()).isEqualTo("ZUL0001");
@@ -103,7 +103,7 @@ class WebhookControllerTest {
                 .andExpect(status().isOk());
 
         ArgumentCaptor<WebhookDtos.ExitEvent> captor = ArgumentCaptor.forClass(WebhookDtos.ExitEvent.class);
-        verify(service, times(1)).handleExit(captor.capture());
+        verify(webhookDispatcher, times(1)).dispatch(captor.capture());
 
         WebhookDtos.ExitEvent dto = captor.getValue();
         assertThat(dto.licensePlate()).isEqualTo("ZUL0001");
@@ -115,7 +115,7 @@ class WebhookControllerTest {
     @DisplayName("ENTRY com garagem cheia → service lança GarageFullException → ainda retorna 200")
     void entry_garage_full_returns_200() throws Exception {
         doThrow(new GarageFullException("Garage is full"))
-                .when(service).handleEntry(any(WebhookDtos.EntryEvent.class));
+                .when(webhookDispatcher).dispatch(any(WebhookDtos.EntryEvent.class));
 
         String body = """
             {
@@ -130,7 +130,7 @@ class WebhookControllerTest {
                         .content(body))
                 .andExpect(status().isOk());
 
-        verify(service, times(1)).handleEntry(any(WebhookDtos.EntryEvent.class));
+        verify(webhookDispatcher, times(1)).dispatch(any(WebhookDtos.EntryEvent.class));
     }
 
     @Test
@@ -149,7 +149,7 @@ class WebhookControllerTest {
                         .content(body))
                 .andExpect(status().isOk());
 
-        verifyNoInteractions(service);
+        verifyNoInteractions(webhookDispatcher);
     }
 }
 

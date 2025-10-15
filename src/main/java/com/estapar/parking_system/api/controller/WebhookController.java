@@ -1,10 +1,8 @@
 package com.estapar.parking_system.api.controller;
 
-import com.estapar.parking_system.application.service.SessionAppService;
+import com.estapar.parking_system.api.controller.registry.WebhookDispatcher;
 import com.estapar.parking_system.api.dto.WebhookDtos.WebhookEvent;
-import com.estapar.parking_system.api.dto.WebhookDtos.EntryEvent;
-import com.estapar.parking_system.api.dto.WebhookDtos.ParkedEvent;
-import com.estapar.parking_system.api.dto.WebhookDtos.ExitEvent;
+
 
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
@@ -21,17 +19,12 @@ import org.springframework.web.bind.annotation.RestController;
 @AllArgsConstructor
 @Slf4j
 public class WebhookController {
-    private final SessionAppService service;
+    private final WebhookDispatcher dispatcher;
 
     @PostMapping
     public ResponseEntity<Void> receive(@Valid @RequestBody WebhookEvent event) {
         log.info("Getting request from webhook. Data info: {}", event);
-
-        switch (event) {
-            case EntryEvent entry  -> service.handleEntry(entry);
-            case ParkedEvent parked -> service.handleParked(parked);
-            case ExitEvent exit   -> service.handleExit(exit);
-        }
+        dispatcher.dispatch(event);
         return ResponseEntity.ok().build();
     }
 }
