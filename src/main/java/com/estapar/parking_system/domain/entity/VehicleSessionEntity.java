@@ -12,6 +12,7 @@ import java.time.Instant;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
+@ToString
 public class VehicleSessionEntity {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -25,7 +26,7 @@ public class VehicleSessionEntity {
     private SectorEntity sector;
 
     @ManyToOne
-    @JoinColumn(name = "spot_id")
+    @JoinColumn(name = "spot_id",nullable = true)
     private SpotEntity spot;
 
     @Column(name = "entry_time", nullable = false)

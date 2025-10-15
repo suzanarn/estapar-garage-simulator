@@ -10,7 +10,7 @@ public class GarageDtos {
 
     public record SectorDto(
             @JsonProperty("sector") String sector,
-            @JsonProperty("basePrice") BigDecimal basePrice,
+            @JsonProperty("base_price") BigDecimal basePrice,
             @JsonProperty("max_capacity") Integer maxCapacity,
             @JsonProperty("open_hour") String openHour,
             @JsonProperty("close_hour") String closeHour,

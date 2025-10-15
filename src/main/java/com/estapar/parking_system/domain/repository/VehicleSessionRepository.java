@@ -21,4 +21,11 @@ public interface VehicleSessionRepository extends JpaRepository<VehicleSessionEn
        """)
     BigDecimal sumChargedBetweenAndSector(Instant start, Instant end, String sectorCode);
 
+    // pega a mais recente entre as abertas (setMaxResults(1))
+    Optional<VehicleSessionEntity> findTopByLicensePlateAndExitTimeIsNullOrderByIdDesc(String plate);
+
+    @Query("select count(vs) from VehicleSessionEntity vs " +
+            "where vs.licensePlate = :plate and vs.exitTime is null")
+    long countOpenByPlate(String plate);
+
 }
