@@ -46,34 +46,28 @@ public class SessionAppService {
         public void handleEntry(EntryEvent event) {
             log.info("ENTRY handled for {}", event.licensePlate());
 
-            // Idempotência rápida (barato e evita criar sessão em duplicidade)
             if (sessionRepo.countOpenByPlate(event.licensePlate()) > 0) {
                 log.debug("ENTRY ignored: already open for plate={}", event.licensePlate());
                 return;
             }
 
             BigDecimal factor = dynamicFactorService.compute(occupancyService.globalRatioBySpots());
-            System.out.println("factor: "+ factor);
-            var session = VehicleSessionEntity.builder()
+            VehicleSessionEntity session = VehicleSessionEntity.builder()
                     .licensePlate(event.licensePlate())
                     .entryTime(TimeParser.parseInstantSafe(event.entryTime()))
                     .priceFactor(factor)
                     .build();
 
             try {
-                System.out.println(session);
                 session = sessionRepo.save(session);
 
             } catch (DataIntegrityViolationException dup) {
-                System.out.println("estou no erro de tentar salvar uma sesstion");
                 log.info("ENTRY duplicate suppressed by unique index for plate={}", event.licensePlate());
                 return;
             }
 
             var allocation = entryAllocator.allocateForSession(session.getId());
-            System.out.println("allocation" + allocation);
             if (allocation == null) {
-                // Sem vaga: remove a sessão recém-criada e sinaliza cheio
                 sessionRepo.deleteById(session.getId());
                 throw new GarageFullException("Garage is full");
             }
@@ -83,8 +77,7 @@ public class SessionAppService {
             session.setSpot(allocation.spot());
             sessionRepo.save(session);
 
-            log.info("ENTRY reserved spot={} sector={} for plate={}",
-                    allocation.spot().getId(), allocation.sector().getCode(), session.getLicensePlate());
+            log.info("ENTRY reserved spot={} sector={} for plate={}", allocation.spot().getId(), allocation.sector().getCode(), session.getLicensePlate());
         }
 
         @Transactional
@@ -96,45 +89,51 @@ public class SessionAppService {
                 return;
             }
 
-            // 1) tenta igualdade exata (lista, para não explodir se vier mais de uma)
-            List<SpotEntity> candidates = spotRepository.findAllByLatAndLng(ev.lat(), ev.lng());
+            List<SpotEntity> candidates = spotRepository.findAllByLatAndLngOrderByIdAsc(ev.lat(), ev.lng());
 
-            SpotEntity dest = null;
+            SpotEntity destination = null;
             if (!candidates.isEmpty()) {
-                // Preferir a vaga já reservada para esta sessão; senão a primeira determinística
-                dest = candidates.stream()
+                destination = candidates.stream()
                         .filter(s -> session.getId().equals(s.getOccupiedBySessionId()))
                         .findFirst()
-                        .orElse(candidates.get(0));
+                        .orElse(candidates.getFirst());
             } else {
-                // 2) fallback tolerante: “nearest” dentro do setor da sessão (se houver setor já definido)
                 if (session.getSector() != null) {
-                    dest = spotRepository.findNearestInSector(
-                            session.getSector().getId(), ev.lat(), ev.lng()
-                    ).orElse(null);
+                    destination = spotRepository.findNearestInSector(session.getSector().getId(), ev.lat(), ev.lng())
+                            .orElse(null);
+                }
+                if (destination == null) {
+                    destination = spotRepository.findNearestGlobal(ev.lat(), ev.lng()).orElse(null);
                 }
             }
 
-            if (dest == null) {
-                log.debug("PARKED ignored: no spot matched (exact or nearest) for plate={}", session.getLicensePlate());
+            if (destination == null) {
+                log.debug("PARKED ignored: no spot matched (exact/nearest) for plate={}", session.getLicensePlate());
                 return;
             }
 
-            var result = preemption.placeOrPreempt(session, dest);
+            var result = preemption.placeOrPreempt(session, destination);
+
+            log.debug("PARKED resolving destination: plate={}, requested=({},{}), chosenSpotId={}, chosenLat={}, chosenLng={}, chosenSector={}",
+                    session.getLicensePlate(),
+                    ev.lat(), ev.lng(),
+                    destination.getId(), destination.getLat(), destination.getLng(),
+                    destination.getSector().getCode());
+
+
             switch (result) {
-                case NOOP -> { /* nada */ }
+                case NOOP -> {/**/}
                 case PLACED_FREE, PREEMPTED -> {
-                    sessionRepo.save(session); // persiste vínculo setado pelo helper
-                    log.info("PARKED result={} plate={} spot={}", result, session.getLicensePlate(), dest.getId());
+                    sessionRepo.save(session);
+                    log.info("PARKED result={} plate={} spot={}, base price = {}", result, session.getLicensePlate(), destination.getId(), session.getBasePrice());
                 }
-                case DENIED -> log.debug("PARKED denied: plate={} spot={}", session.getLicensePlate(), dest.getId());
+                case DENIED -> log.debug("PARKED denied: plate={} spot={}", session.getLicensePlate(), destination.getId());
             }
         }
 
         @Transactional
         public void handleExit(ExitEvent ev) {
-            VehicleSessionEntity session =
-                    sessionRepo.findTopByLicensePlateAndExitTimeIsNullOrderByIdDesc(ev.licensePlate()).orElse(null);
+            VehicleSessionEntity session = sessionRepo.findTopByLicensePlateAndExitTimeIsNullOrderByIdDesc(ev.licensePlate()).orElse(null);
             if (session == null) return;
 
             Instant exit = TimeParser.parseInstantSafe(ev.exitTime());
@@ -150,11 +149,11 @@ public class SessionAppService {
             }
 
             if (session.getBasePrice() == null) {
-                var minBase = sectorRepository.findMinBasePrice();
+                BigDecimal minBase = sectorRepository.findMinBasePrice();
                 session.setBasePrice(minBase != null ? minBase : BigDecimal.ZERO);
             }
 
-            var amount = pricingService.hourlyCharge(
+            BigDecimal amount = pricingService.hourlyCharge(
                     session.getBasePrice(),
                     session.getPriceFactor(),
                     session.getEntryTime(),
@@ -163,7 +162,7 @@ public class SessionAppService {
             session.setChargedAmount(amount);
             sessionRepo.save(session);
 
-            var spot = session.getSpot();
+            SpotEntity spot = session.getSpot();
             if (spot != null && session.getId().equals(spot.getOccupiedBySessionId())) {
                 spot.setOccupiedBySessionId(null);
                 spotRepository.save(spot);

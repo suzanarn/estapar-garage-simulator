@@ -9,7 +9,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
-      ddl-auto: none     # usamos Flyway
+      ddl-auto: none
     open-in-view: false
     properties:
       hibernate:

@@ -9,10 +9,6 @@ import java.time.Instant;
 import java.util.Optional;
 
 public interface VehicleSessionRepository extends JpaRepository<VehicleSessionEntity, Long> {
-    @Query("select vs from VehicleSessionEntity vs " +
-            "where vs.licensePlate = :plate and vs.exitTime is null")
-    Optional<VehicleSessionEntity> findOpenByPlate(String plate);
-
     @Query("""
        select coalesce(sum(vs.chargedAmount), 0)
        from VehicleSessionEntity vs
@@ -21,7 +17,6 @@ public interface VehicleSessionRepository extends JpaRepository<VehicleSessionEn
        """)
     BigDecimal sumChargedBetweenAndSector(Instant start, Instant end, String sectorCode);
 
-    // pega a mais recente entre as abertas (setMaxResults(1))
     Optional<VehicleSessionEntity> findTopByLicensePlateAndExitTimeIsNullOrderByIdDesc(String plate);
 
     @Query("select count(vs) from VehicleSessionEntity vs " +

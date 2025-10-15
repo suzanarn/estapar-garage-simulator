@@ -14,17 +14,17 @@ public class OccupancyService {
         private final SectorRepository sectorRepository;
 
 
-        /** Capacidade total (todas as vagas físicas) */
+        /** Total capacity (all physical spaces) */
         public long totalCapacity() {
             return spotRepository.count();
         }
 
-        /** Vagas já tomadas (ocupadas/reservadas) — usamos occupied como “reserva lógica” */
+        /** Places already taken (occupied/reserved), we use occupied as a “logical reservation” */
         public long takenSpotsGlobal() {
             return spotRepository.countOccupiedGlobal();
         }
 
-        /** Ratio global por VAGAS, para preço dinâmico na ENTRADA */
+        /** Overall ratio per SPOTS, for dynamic pricing at ENTRY */
         public BigDecimal globalRatioBySpots() {
             long total = totalCapacity();
             if (total == 0) return BigDecimal.ZERO;
@@ -32,7 +32,7 @@ public class OccupancyService {
                     .divide(BigDecimal.valueOf(total), 2, RoundingMode.HALF_UP);
         }
 
-        /** Setor cheio quando vagas tomadas no setor >= maxCapacity do setor */
+        /** Sector full when vacancies taken in the sector >= maxCapacity of the sector */
         public boolean isSectorFull(Long sectorId) {
             long taken = spotRepository.countOccupiedInSector(sectorId);
             int max = sectorRepository.findById(sectorId)

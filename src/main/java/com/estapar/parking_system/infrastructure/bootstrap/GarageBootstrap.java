@@ -1,5 +1,6 @@
 package com.estapar.parking_system.infrastructure.bootstrap;
 
+import com.estapar.parking_system.api.dto.GarageDtos.GarageResponse;
 import com.estapar.parking_system.infrastructure.client.GarageClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,7 +19,7 @@ public class GarageBootstrap {
         return args -> {
             log.info("Fetching garage from simulator at {}", client.getBaseUrl());
             try {
-                var res = client.fetchGarage();
+                GarageResponse res = client.fetchGarage();
                 sync.sync(res);
                 log.info("Garage sync completed.");
             } catch (Exception e) {

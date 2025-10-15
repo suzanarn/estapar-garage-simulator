@@ -8,7 +8,9 @@ import com.estapar.parking_system.domain.repository.SpotRepository;
 import com.estapar.parking_system.domain.repository.VehicleSessionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Objects;
 import java.util.Optional;
 
 @Component
@@ -21,99 +23,139 @@ public class ParkingPreemption {
 
     public enum Result { NOOP, PLACED_FREE, PREEMPTED, DENIED }
 
+    @Transactional
     public Result placeOrPreempt(VehicleSessionEntity session, SpotEntity destination) {
-        // Idempotence
-        if (session.getId().equals(destination.getOccupiedBySessionId())) return Result.NOOP;
+        // idempotent
+        if (Objects.equals(session.getId(), destination.getOccupiedBySessionId())) return Result.NOOP;
 
-        // if estination is free, try to occupy atomically
         if (destination.getOccupiedBySessionId() == null) {
-            if (spotRepo.tryOccupy(destination.getId(), session.getId()) == 1) {
-                releasePreviousIfOwned(session);
-                attachSessionToSpot(session, destination);
-                return Result.PLACED_FREE;
-            }
-            return Result.NOOP;
+            return tryPlaceOnFreeSpot(session, destination);
         }
 
-        Long tempSessionId = destination.getOccupiedBySessionId();
-        SpotEntity previousSpot = session.getSpot();
+        //destination is occupied
+        Long displacedId = destination.getOccupiedBySessionId();
+        SpotEntity prevSpot = session.getSpot();
 
-        SpotEntity alternativeSpot = findAlternativeForDisplaced(previousSpot, destination.getSector().getId());
-        if (alternativeSpot == null) return Result.DENIED;
+        // try direct swap (when the alternative is exactly the previous spot of the session itself)
+        Optional<SpotEntity> alt = findAlternativeForDisplaced(prevSpot, destination.getSector().getId());
+        if (alt.isEmpty()) return Result.DENIED;
 
-        // if alternativeSpot == someone's park spot
-        if (previousSpot != null && alternativeSpot.getId().equals(previousSpot.getId())) {
-            int movedX = spotRepo.trySwapOccupant(previousSpot.getId(), session.getId(), tempSessionId);
-            if (movedX == 0) return Result.DENIED;
+        SpotEntity alternative = alt.get();
 
-            int swappedY = spotRepo.trySwapOccupant(destination.getId(), tempSessionId, session.getId());
-            if (swappedY == 0) throw new IllegalStateException("Swap Y falhou; rollback reverte swap X");
-
-            attachSessionToSpot(session, destination);
-            updateDisplacedSessionTo(previousSpot, tempSessionId);
-            return Result.PREEMPTED;
+        if (prevSpot != null && Objects.equals(alternative.getId(), prevSpot.getId())) {
+            return tryDirectSwap(session, prevSpot, destination, displacedId);
         }
 
-        // relocate temp to alternativeSpot (tryOccupy), after swap Y
-        int moved = spotRepo.tryOccupy(alternativeSpot.getId(), tempSessionId);
+        // relocate the displaced person to the alternative and then occupy the destination
+        return tryRelocateAndSwap(session, destination, displacedId, prevSpot, alternative);
+    }
+
+
+    private Result tryPlaceOnFreeSpot(VehicleSessionEntity session, SpotEntity destination) {
+        int updated = spotRepo.tryOccupy(destination.getId(), session.getId());
+        if (updated == 0) return Result.NOOP;
+
+        releasePreviousIfOwned(session);
+        attachSessionToSpot(session, destination);
+        return Result.PLACED_FREE;
+    }
+
+    /** manage if my reserved spot is the one someone wants to park **/
+    private Result tryDirectSwap(VehicleSessionEntity session,
+                                 SpotEntity previousSpot,
+                                 SpotEntity destination,
+                                 Long displacedId) {
+
+        int movedX = spotRepo.trySwapOccupant(previousSpot.getId(), session.getId(), displacedId);
+        if (movedX == 0) return Result.DENIED;
+
+        int swappedY = spotRepo.trySwapOccupant(destination.getId(), displacedId, session.getId());
+        if (swappedY == 0) {
+            spotRepo.trySwapOccupant(previousSpot.getId(), displacedId, session.getId());
+            return Result.DENIED;
+        }
+
+        attachSessionToSpot(session, destination);
+        updateDisplacedSessionTo(previousSpot, displacedId);
+        return Result.PREEMPTED;
+    }
+
+    /** try to relocate **/
+    private Result tryRelocateAndSwap(VehicleSessionEntity session,
+                                      SpotEntity destination,
+                                      Long displacedId,
+                                      SpotEntity previousSpot,
+                                      SpotEntity alternativeSpot) {
+
+        int moved = spotRepo.tryOccupy(alternativeSpot.getId(), displacedId);
         if (moved == 0) return Result.DENIED;
 
-        int swapped = spotRepo.trySwapOccupant(destination.getId(), tempSessionId, session.getId());
-        if (swapped == 1) {
-            if (previousSpot != null && session.getId().equals(previousSpot.getOccupiedBySessionId())) {
-                previousSpot.setOccupiedBySessionId(null);
-                spotRepo.save(previousSpot);
-            }
-            attachSessionToSpot(session, destination);
-            return Result.PREEMPTED;
-        } else {
-            // undo relocation of tempporary
+        int swapped = spotRepo.trySwapOccupant(destination.getId(), displacedId, session.getId());
+        if (swapped == 0) {
             alternativeSpot.setOccupiedBySessionId(null);
             spotRepo.save(alternativeSpot);
             return Result.DENIED;
         }
+
+        if (previousSpot != null && Objects.equals(session.getId(), previousSpot.getOccupiedBySessionId())) {
+            previousSpot.setOccupiedBySessionId(null);
+            spotRepo.save(previousSpot);
+        }
+
+        attachSessionToSpot(session, destination);
+        updateDisplacedSessionTo(alternativeSpot, displacedId);
+        return Result.PREEMPTED;
     }
 
-    private SpotEntity findAlternativeForDisplaced(SpotEntity prev, Long destSectorId) {
-        Optional<SpotEntity> same = spotRepo.findFirstFreeInSector(destSectorId);
-        if (same.isPresent()) return same.get();
-        if (prev != null) return prev;
+/** get free spot in the same sector or in another **/
+    private Optional<SpotEntity> findAlternativeForDisplaced(SpotEntity previousOfRequester, Long destSectorId) {
+        Optional<SpotEntity> sameSector = spotRepo.findFirstBySector_IdAndOccupiedBySessionIdIsNullOrderByIdAsc(destSectorId);
+        if (sameSector.isPresent()) return sameSector;
+        if (previousOfRequester != null) return Optional.of(previousOfRequester);
 
         for (SectorEntity sector : sectorRepo.findAll()) {
-            if (sector.getId().equals(destSectorId)) continue;
-            var other = spotRepo.findFirstFreeInSector(sector.getId());
-            if (other.isPresent()) return other.get();
+            if (Objects.equals(sector.getId(), destSectorId)) continue;
+            Optional<SpotEntity> other = spotRepo
+                    .findFirstBySector_IdAndOccupiedBySessionIdIsNullOrderByIdAsc(sector.getId());
+            if (other.isPresent()) return other;
         }
-        return null;
+        return Optional.empty();
     }
 
     private void releasePreviousIfOwned(VehicleSessionEntity session) {
-        var prev = session.getSpot();
-        if (prev != null && session.getId().equals(prev.getOccupiedBySessionId())) {
+        SpotEntity prev = session.getSpot();
+        if (prev != null && Objects.equals(session.getId(), prev.getOccupiedBySessionId())) {
             prev.setOccupiedBySessionId(null);
             spotRepo.save(prev);
         }
     }
 
-    // Estas duas são “sem efeito colateral externo” além da sessão/spot em si:
+    /** attach sector  **/
     public static void attachSessionToSpot(VehicleSessionEntity session, SpotEntity spot) {
         SectorEntity sector = spot.getSector();
-        if (session.getSector() == null || !session.getSector().getId().equals(sector.getId())) {
+        if (session.getSector() == null || !Objects.equals(session.getSector().getId(), sector.getId())) {
             session.setSector(sector);
+            session.setBasePrice(sector.getBasePrice());
         }
-        if (session.getBasePrice() == null) session.setBasePrice(sector.getBasePrice());
+
+        if (session.getBasePrice() == null) {
+            session.setBasePrice(sector.getBasePrice());
+        }
         session.setSpot(spot);
     }
 
-    public void updateDisplacedSessionTo(SpotEntity newSpot, Long displacedSessionId) {
-        sessionRepo.findById(displacedSessionId).ifPresent(session -> {
-            session.setSpot(newSpot);
+    /** update displaced spot  **/
+    private void updateDisplacedSessionTo(SpotEntity newSpot, Long displacedSessionId) {
+        sessionRepo.findById(displacedSessionId).ifPresent(displaced -> {
+            displaced.setSpot(newSpot);
             SectorEntity sector = newSpot.getSector();
-            if (session.getSector() == null || !session.getSector().getId().equals(sector.getId())) {
-                session.setSector(sector);
-                if (session.getBasePrice() == null) session.setBasePrice(sector.getBasePrice());
+            if (displaced.getSector() == null || !Objects.equals(displaced.getSector().getId(), sector.getId())) {
+                displaced.setSector(sector);
+                displaced.setBasePrice(sector.getBasePrice());
+            } else if (displaced.getBasePrice() == null) {
+                displaced.setBasePrice(sector.getBasePrice());
             }
-            sessionRepo.save(session);
+            sessionRepo.save(displaced);
         });
     }
 }

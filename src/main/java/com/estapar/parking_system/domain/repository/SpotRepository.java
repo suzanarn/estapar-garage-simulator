@@ -12,14 +12,8 @@ import java.util.Optional;
 
 public interface SpotRepository extends JpaRepository<SpotEntity, Long> {
 
-    // ---------- Consulta por coordenadas ----------
-    // Em vez de Optional (single), use lista para evitar NonUniqueResultException
-    List<SpotEntity> findAllByLatAndLng(BigDecimal lat, BigDecimal lng);
+    List<SpotEntity> findAllByLatAndLngOrderByIdAsc(BigDecimal lat, BigDecimal lng);
 
-    // (Opcional) se quiser só a primeira determinística por ID
-    Optional<SpotEntity> findFirstByLatAndLngOrderByIdAsc(BigDecimal lat, BigDecimal lng);
-
-    // Fallback tolerante: “vaga mais próxima” dentro do setor (caso as coords não casem exatamente)
     @Query(value = """
         SELECT *
         FROM spot
@@ -31,7 +25,16 @@ public interface SpotRepository extends JpaRepository<SpotEntity, Long> {
                                              @Param("lat") BigDecimal lat,
                                              @Param("lng") BigDecimal lng);
 
-    // ---------- Métricas de ocupação ----------
+    @Query(value = """
+    SELECT *
+    FROM spot
+    ORDER BY ABS(lat - :lat) + ABS(lng - :lng) ASC
+    LIMIT 1
+    """, nativeQuery = true)
+    Optional<SpotEntity> findNearestGlobal(@Param("lat") BigDecimal lat,
+                                           @Param("lng") BigDecimal lng);
+
+
     @Query("""
        select count(s) from SpotEntity s
        where s.sector.id = :sectorId and s.occupiedBySessionId is not null
@@ -51,8 +54,6 @@ public interface SpotRepository extends JpaRepository<SpotEntity, Long> {
        """)
     Optional<SpotEntity> findFirstFreeInSector(@Param("sectorId") Long sectorId);
 
-    // ---------- Operações atômicas p/ corrida ----------
-    /** Ocupa a vaga se (e somente se) ela ainda estiver livre. Retorna 1 se conseguiu, 0 se perdeu a corrida. */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
        update SpotEntity s
@@ -61,7 +62,6 @@ public interface SpotRepository extends JpaRepository<SpotEntity, Long> {
        """)
     int tryOccupy(@Param("spotId") Long spotId, @Param("sessionId") Long sessionId);
 
-    /** Troca o ocupante da vaga, somente se o ocupante atual for o esperado (safe contra corrida). */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
        update SpotEntity s
@@ -71,8 +71,6 @@ public interface SpotRepository extends JpaRepository<SpotEntity, Long> {
     int trySwapOccupant(@Param("spotId") Long spotId,
                         @Param("expectedSessionId") Long expectedSessionId,
                         @Param("newSessionId") Long newSessionId);
-
-    // remove o @Query anterior e use este:
     Optional<SpotEntity> findFirstBySector_IdAndOccupiedBySessionIdIsNullOrderByIdAsc(Long sectorId);
 
 }

@@ -6,7 +6,6 @@ import com.estapar.parking_system.api.dto.WebhookDtos.EntryEvent;
 import com.estapar.parking_system.api.dto.WebhookDtos.ParkedEvent;
 import com.estapar.parking_system.api.dto.WebhookDtos.ExitEvent;
 
-
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +25,7 @@ public class WebhookController {
 
     @PostMapping
     public ResponseEntity<Void> receive(@Valid @RequestBody WebhookEvent event) {
-        log.info("Recebendo request do webhook. Data info: {}", event);
+        log.info("Getting request from webhook. Data info: {}", event);
 
         switch (event) {
             case EntryEvent entry  -> service.handleEntry(entry);

@@ -24,7 +24,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = WebhookController.class)
-@Import(WebhookExceptionHandler.class) // inclui o Advice para mapear exceções p/ 200
+@Import(WebhookExceptionHandler.class)
 class WebhookControllerTest {
 
     @Autowired
@@ -149,7 +149,6 @@ class WebhookControllerTest {
                         .content(body))
                 .andExpect(status().isOk());
 
-        // service NÃO é chamado
         verifyNoInteractions(service);
     }
 }

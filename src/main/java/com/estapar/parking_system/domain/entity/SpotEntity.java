@@ -20,10 +20,10 @@ public class SpotEntity {
     @JoinColumn(name = "sector_id")
     private SectorEntity sector;
 
-    @Column(name = "lat")
+    @Column(name = "lat", precision = 10, scale = 7)
     private BigDecimal lat;
 
-    @Column(name = "lng")
+    @Column(name = "lng",precision = 10, scale = 7)
     private BigDecimal lng;
 
     @Column(name = "occupied_by_session_id")

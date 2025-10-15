@@ -21,19 +21,13 @@ public class EntryAllocator {
     /** Try to reserve (atomically) a spot in any available sector */
     public Allocation allocateForSession(Long sessionId) {
         for (SectorEntity sector : sectorRepo.findAll()) {
-            System.out.println("to no allocation");
             if (occupancy.isSectorFull(sector.getId())) continue;
             while (true) {
-                System.out.println("to no allocation - while");
-
                 var free = spotRepo.findFirstBySector_IdAndOccupiedBySessionIdIsNullOrderByIdAsc(sector.getId());
-                System.out.println("free spot" + free) ;
                 if (free.isEmpty()) break;
 
                 var candidate = free.get();
-                System.out.println("candidate: "+ candidate);
                 if (spotRepo.tryOccupy(candidate.getId(), sessionId) == 1) {
-                    System.out.println("to no if do try to occupy");
                     return new Allocation(sector, candidate);
                 }
             }
