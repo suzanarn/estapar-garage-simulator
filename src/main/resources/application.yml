@@ -2,11 +2,10 @@ server:
   port: 3003
 
 spring:
-  datasource:
-    url: jdbc:mysql://localhost:3306/estapar?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectionTimeZone=UTC
-    username: root
-    password: root
-    driver-class-name: com.mysql.cj.jdbc.Driver
+  url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/estapar?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectionTimeZone=UTC}
+  username: ${SPRING_DATASOURCE_USERNAME:root}
+  password: ${SPRING_DATASOURCE_PASSWORD:root}
+  driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
       ddl-auto: none
@@ -20,7 +19,7 @@ spring:
     locations: classpath:db/migration
 
 simulator:
-  base-url: http://localhost:3000
+  base-url: ${SIMULATOR_BASE_URL:http://host.docker.internal:3000}
 
 app:
   bootstrap:

@@ -23,6 +23,7 @@ public class RevenueController implements RevenueApiInterface {
         return ResponseEntity.ok(revenueService.revenueForDate(request.date(), request.sector()));
     }
 
+    /* a clone using post to get info on swagger doc*/
     @PostMapping()
     public ResponseEntity<RevenueResponse> postRevenue(@Valid @RequestBody RevenueRequest request) {
         return ResponseEntity.ok(revenueService.revenueForDate(request.date(), request.sector()));
